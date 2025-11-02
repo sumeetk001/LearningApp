@@ -1,0 +1,779 @@
+openapi: 3.0.3
+info:
+  title: Learning App Subjects API
+  description: Client-side API specification for managing educational subjects, progress tracking, and featured content
+  version: 1.0.0
+  contact:
+    name: Kids Learning App
+    email: dev@kidslearningapp.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: 'client://localStorage'
+    description: Client-side localStorage API
+
+paths:
+  /subjects:
+    get:
+      summary: Get all subjects
+      description: Retrieves all available educational subjects
+      operationId: getSubjects
+      tags:
+        - Subjects
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subjects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+                  metadata:
+                    $ref: '#/components/schemas/ResponseMetadata'
+        '500':
+          description: Storage error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /subjects/{subjectId}:
+    get:
+      summary: Get subject by ID
+      description: Retrieves detailed information for a specific subject
+      operationId: getSubjectById
+      tags:
+        - Subjects
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+          example: 'ancient-civilizations'
+      responses:
+        '200':
+          description: Subject found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subject:
+                    $ref: '#/components/schemas/Subject'
+                  userProgress:
+                    $ref: '#/components/schemas/SubjectProgress'
+                  recommendations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /subjects/category/{category}:
+    get:
+      summary: Get subjects by category
+      description: Retrieves subjects filtered by educational category
+      operationId: getSubjectsByCategory
+      tags:
+        - Subjects
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/SubjectCategory'
+      responses:
+        '200':
+          description: Filtered subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subjects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+                  category:
+                    $ref: '#/components/schemas/SubjectCategory'
+                  totalCount:
+                    type: integer
+
+  /subjects/trending:
+    get:
+      summary: Get trending subjects
+      description: Retrieves subjects marked as trending or popular
+      operationId: getTrendingSubjects
+      tags:
+        - Subjects
+      responses:
+        '200':
+          description: Trending subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trendingSubjects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+                  criteria:
+                    type: string
+                    enum: [manual, engagement, new]
+                  lastUpdated:
+                    type: string
+                    format: date-time
+
+  /progress:
+    get:
+      summary: Get user progress
+      description: Retrieves complete user progress data
+      operationId: getUserProgress
+      tags:
+        - Progress
+      responses:
+        '200':
+          description: User progress data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userProgress:
+                    $ref: '#/components/schemas/UserProgress'
+                  statistics:
+                    $ref: '#/components/schemas/ProgressStatistics'
+
+  /progress/{subjectId}:
+    put:
+      summary: Update subject progress
+      description: Updates progress for a specific subject
+      operationId: updateSubjectProgress
+      tags:
+        - Progress
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                updates:
+                  type: object
+                  properties:
+                    lessonsCompleted:
+                      type: integer
+                      minimum: 0
+                    timeSpent:
+                      type: integer
+                      minimum: 0
+                      description: Time spent in minutes
+                    status:
+                      $ref: '#/components/schemas/ProgressStatus'
+      responses:
+        '200':
+          description: Progress updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress:
+                    $ref: '#/components/schemas/SubjectProgress'
+                  achievements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Achievement'
+                  nextRecommendation:
+                    $ref: '#/components/schemas/Subject'
+
+  /progress/{subjectId}/lessons/{lessonId}/complete:
+    post:
+      summary: Mark lesson complete
+      description: Marks a specific lesson as completed and updates progress
+      operationId: markLessonComplete
+      tags:
+        - Progress
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completedAt:
+                  type: string
+                  format: date-time
+                timeSpent:
+                  type: integer
+                  minimum: 0
+                  description: Time spent on lesson in minutes
+      responses:
+        '200':
+          description: Lesson marked complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress:
+                    $ref: '#/components/schemas/SubjectProgress'
+                  newAchievements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Achievement'
+                  nextLesson:
+                    type: string
+                  subjectCompleted:
+                    type: boolean
+
+  /featured-content:
+    get:
+      summary: Get featured content
+      description: Retrieves active featured content for display
+      operationId: getFeaturedContent
+      tags:
+        - Featured Content
+      responses:
+        '200':
+          description: Featured content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  featuredContent:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FeaturedContent'
+                  displayOrder:
+                    type: array
+                    items:
+                      type: integer
+                  metadata:
+                    type: object
+                    properties:
+                      lastRefresh:
+                        type: string
+                        format: date-time
+                      nextRefresh:
+                        type: string
+                        format: date-time
+
+  /featured-content/{contentId}/interaction:
+    post:
+      summary: Track featured content interaction
+      description: Tracks user interaction with featured content
+      operationId: trackFeaturedContentInteraction
+      tags:
+        - Featured Content
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [view, click, dismiss]
+                timestamp:
+                  type: string
+                  format: date-time
+                sessionId:
+                  type: string
+      responses:
+        '204':
+          description: Interaction tracked successfully
+
+components:
+  schemas:
+    Subject:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - icon
+        - coverImage
+        - color
+        - difficulty
+        - status
+        - category
+        - isTrending
+        - lessonCount
+        - estimatedDuration
+        - tags
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: 'ancient-civilizations'
+        name:
+          type: string
+          maxLength: 30
+          example: 'Ancient Civilizations'
+        description:
+          type: string
+          maxLength: 120
+          example: 'Explore amazing ancient cultures, their buildings, and daily life through time!'
+        icon:
+          type: string
+          format: uri
+          description: Icon image URL (100x100px)
+        coverImage:
+          type: string
+          format: uri
+          description: Cover image URL (600x400px)
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+        difficulty:
+          $ref: '#/components/schemas/DifficultyLevel'
+        status:
+          $ref: '#/components/schemas/SubjectStatus'
+        category:
+          $ref: '#/components/schemas/SubjectCategory'
+        isTrending:
+          type: boolean
+          description: Shows "Hot" badge
+        lessonCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+        estimatedDuration:
+          type: integer
+          minimum: 5
+          maximum: 120
+          description: Minutes to complete
+        prerequisites:
+          type: array
+          items:
+            type: string
+          description: Required subject IDs
+        tags:
+          type: array
+          items:
+            type: string
+          description: Searchable keywords
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubjectColor:
+      type: object
+      required:
+        - primary
+        - secondary
+        - contrastRatio
+      properties:
+        primary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: '#8B4513'
+        secondary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: '#DAA520'
+        contrastRatio:
+          type: number
+          minimum: 4.5
+          description: WCAG AA compliance
+        background:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Card background color
+
+    DifficultyLevel:
+      type: string
+      enum: [beginner, intermediate, advanced]
+
+    SubjectStatus:
+      type: string
+      enum: [available, coming-soon, maintenance]
+
+    SubjectCategory:
+      type: string
+      enum: 
+        - mathematics
+        - science
+        - language-arts
+        - social-studies
+        - arts
+        - music
+        - physical-education
+        - life-skills
+
+    UserProgress:
+      type: object
+      required:
+        - subjectProgress
+        - lastUpdated
+        - version
+      properties:
+        userId:
+          type: string
+          description: Optional for future user accounts
+        subjectProgress:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SubjectProgress'
+        lastUpdated:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: '1.0.0'
+
+    SubjectProgress:
+      type: object
+      required:
+        - subjectId
+        - status
+        - lessonsCompleted
+        - totalLessons
+        - completionPercentage
+        - firstStarted
+        - lastAccessed
+        - timeSpent
+        - achievements
+      properties:
+        subjectId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProgressStatus'
+        lessonsCompleted:
+          type: integer
+          minimum: 0
+        totalLessons:
+          type: integer
+          minimum: 1
+        completionPercentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Calculated field
+        firstStarted:
+          type: string
+          format: date-time
+        lastAccessed:
+          type: string
+          format: date-time
+        timeSpent:
+          type: integer
+          minimum: 0
+          description: Total minutes
+        achievements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Achievement'
+
+    ProgressStatus:
+      type: string
+      enum: [not-started, started, in-progress, completed, paused]
+
+    Achievement:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - iconUrl
+        - unlockedAt
+        - category
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        iconUrl:
+          type: string
+          format: uri
+        unlockedAt:
+          type: string
+          format: date-time
+        category:
+          type: string
+          enum: [completion, time, streak, exploration]
+
+    FeaturedContent:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - heroImage
+        - ctaText
+        - ctaAction
+        - priority
+        - isActive
+        - startDate
+        - targetAudience
+        - analytics
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          maxLength: 50
+        subtitle:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        heroImage:
+          $ref: '#/components/schemas/MediaAsset'
+        ctaText:
+          type: string
+          description: Call-to-action button text
+        ctaAction:
+          $ref: '#/components/schemas/FeaturedAction'
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Display order (1 = highest)
+        isActive:
+          type: boolean
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        targetAudience:
+          type: array
+          items:
+            type: string
+        analytics:
+          type: object
+          properties:
+            impressions:
+              type: integer
+            clicks:
+              type: integer
+            clickThroughRate:
+              type: number
+
+    FeaturedAction:
+      type: object
+      required:
+        - type
+        - target
+      properties:
+        type:
+          type: string
+          enum: [navigate-subject, external-link, modal, custom]
+        target:
+          type: string
+          description: Subject ID, URL, or component name
+        parameters:
+          type: object
+          additionalProperties: true
+
+    MediaAsset:
+      type: object
+      required:
+        - id
+        - altText
+        - src
+        - width
+        - height
+        - aspectRatio
+        - loadingStrategy
+        - format
+        - optimizationLevel
+        - metadata
+      properties:
+        id:
+          type: string
+        altText:
+          type: string
+          description: Accessibility description
+        src:
+          type: string
+          format: uri
+        srcSet:
+          $ref: '#/components/schemas/ResponsiveImageSet'
+        width:
+          type: integer
+        height:
+          type: integer
+        aspectRatio:
+          type: string
+          example: '3:2'
+        loadingStrategy:
+          type: string
+          enum: [eager, lazy, critical]
+        format:
+          type: string
+          enum: [webp, jpeg, png, svg]
+        optimizationLevel:
+          type: integer
+          minimum: 1
+          maximum: 100
+        metadata:
+          $ref: '#/components/schemas/ImageMetadata'
+
+    ResponsiveImageSet:
+      type: object
+      properties:
+        webp:
+          type: object
+          properties:
+            320w:
+              type: string
+              format: uri
+            640w:
+              type: string
+              format: uri
+            1024w:
+              type: string
+              format: uri
+            1920w:
+              type: string
+              format: uri
+        jpeg:
+          type: object
+          properties:
+            320w:
+              type: string
+              format: uri
+            640w:
+              type: string
+              format: uri
+            1024w:
+              type: string
+              format: uri
+            1920w:
+              type: string
+              format: uri
+
+    ImageMetadata:
+      type: object
+      required:
+        - fileSize
+        - colorPalette
+        - isAccessible
+        - source
+        - keywords
+      properties:
+        fileSize:
+          type: integer
+          description: Bytes
+        colorPalette:
+          type: array
+          items:
+            type: string
+          description: Dominant colors
+        isAccessible:
+          type: boolean
+          description: Contrast/readability check
+        source:
+          type: string
+          description: Attribution/source info
+        keywords:
+          type: array
+          items:
+            type: string
+
+    ProgressStatistics:
+      type: object
+      properties:
+        totalSubjectsStarted:
+          type: integer
+        totalSubjectsCompleted:
+          type: integer
+        totalTimeSpent:
+          type: integer
+          description: Total minutes across all subjects
+        streakDays:
+          type: integer
+          description: Consecutive days of activity
+
+    ResponseMetadata:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        lastUpdated:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+        - timestamp
+      properties:
+        code:
+          type: string
+          enum: 
+            - SUBJECT_NOT_FOUND
+            - INVALID_PROGRESS
+            - STORAGE_FULL
+            - PERMISSION_DENIED
+            - VALIDATION_ERROR
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+
+tags:
+  - name: Subjects
+    description: Educational subject management
+  - name: Progress
+    description: User learning progress tracking
+  - name: Featured Content
+    description: Promotional and featured educational content
