@@ -17,30 +17,21 @@
   the iteration process.
 -->
 
-## Technical Context
-
-**Language/Version**: TypeScript 5.0+, React 18+  
-**Primary Dependencies**: Material-UI, Framer Motion/React Spring, React Router  
-**Storage**: IndexedDB for offline content, secure cloud storage for user data  
-**Testing**: Jest, React Testing Library, Playwright for E2E testing  
-**Target Platform**: Mobile-first (iOS/Android), Progressive Web App, Desktop support  
-**Project Type**: Single-page React application with PWA capabilities  
-**Performance Goals**: <500KB initial bundle, 90+ Lighthouse score, 60fps animations  
-**Constraints**: COPPA compliance, <3s initial load, offline content access  
-**Scale/Scope**: 5-10 age group, multiple learning topics, chunk-based content delivery
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
+**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Project Type**: [single/web/mobile - determines source structure]  
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
+**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-✅ **Child-First Design**: Feature design prioritizes children aged 5-10 with age-appropriate content and interfaces  
-✅ **Chunk-Based Learning**: Content organized into 5-7 minute digestible chunks with clear learning objectives  
-✅ **Interactive & Animated**: Includes purposeful animations and interactive elements supporting learning goals  
-✅ **Mobile-First React**: Implementation follows mobile-first responsive design using React best practices  
-✅ **Privacy & Security**: Complies with COPPA requirements and child data protection standards  
-✅ **Material Design**: Follows Google Material Design guidelines with child-friendly adaptations  
-✅ **Performance**: Meets performance requirements for mobile devices and offline capability  
-✅ **Accessibility**: Achieves WCAG 2.1 AA compliance for child users
+[Gates determined based on constitution file]
 
 ## Project Structure
 
@@ -53,39 +44,101 @@ specs/[###-feature]/
 ├── data-model.md        # Phase 1 output (/speckit.plan command)
 ├── quickstart.md        # Phase 1 output (/speckit.plan command)
 ├── contracts/           # Phase 1 output (/speckit.plan command)
+├── media/               # Visual assets (mockups, diagrams, references)
+│   ├── mockups/         # UI/UX mockups and wireframes
+│   ├── diagrams/        # Architecture and flow diagrams
+│   └── references/      # Reference images and examples
 └── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
-### Source Code (repository root)
+### Visual Assets Strategy *(include if feature has UI/UX components)*
+
+<!--
+  ACTION REQUIRED: Define visual asset requirements and creation approach.
+  Only include this section if the feature involves user interfaces, visual design,
+  or requires diagrams/mockups for clarity.
+-->
+
+**Design System**: [e.g., Material Design, Apple HIG, custom design system or NEEDS CLARIFICATION]  
+**Visual Assets Needed**: [e.g., mockups, wireframes, icons, illustrations or N/A]  
+**Asset Creation Approach**: [e.g., design tools used, collaboration process or NEEDS CLARIFICATION]  
+**Image Formats**: [e.g., PNG for mockups, SVG for diagrams, JPEG for photos or NEEDS CLARIFICATION]  
+**Accessibility Requirements**: [e.g., alt text standards, color contrast ratios or NEEDS CLARIFICATION]  
+**Responsive Considerations**: [e.g., mobile breakpoints, tablet layouts or N/A]
+
+**Asset Validation Checklist**:
+- [ ] All images have descriptive filenames (not image1.png)
+- [ ] All images include meaningful alt text
+- [ ] File sizes are optimized (<2MB per image)
+- [ ] SVG used for diagrams and scalable graphics
+- [ ] Images follow consistent naming convention
+- [ ] Visual assets align with feature requirements
+
+### Media Directory Structure *(include if visual assets planned)*
 
 ```text
-# React Kids Learning App Structure
-src/
-├── components/          # Reusable UI components
-│   ├── common/         # Common components (buttons, inputs)
-│   ├── learning/       # Learning-specific components
-│   └── animation/      # Animation components
-├── pages/              # Page/route components
-├── chunks/             # Learning chunk data and logic
-├── services/           # API and data services
-├── hooks/              # Custom React hooks
-├── utils/              # Utility functions
-├── types/              # TypeScript type definitions
-└── assets/             # Images, animations, icons
-
-public/
-├── offline-content/    # Cached learning content
-├── icons/              # PWA icons
-└── manifest.json       # PWA manifest
-
-tests/
-├── components/         # Component tests
-├── integration/        # Integration tests
-├── e2e/               # End-to-end tests
-└── accessibility/      # Accessibility tests
+specs/[###-feature]/media/
+├── mockups/
+│   ├── [screen-name]-desktop.png    # Desktop mockups
+│   ├── [screen-name]-mobile.png     # Mobile mockups
+│   └── [screen-name]-tablet.png     # Tablet mockups (if needed)
+├── diagrams/
+│   ├── user-flow-[flow-name].svg    # User journey diagrams
+│   ├── architecture-overview.svg    # System architecture
+│   ├── data-flow-[process].svg      # Data flow diagrams
+│   └── component-relationships.svg  # Component interaction diagrams
+└── references/
+    ├── competitor-[feature].jpg      # Reference implementations
+    ├── design-inspiration-[x].png    # Visual inspiration
+    └── existing-patterns-[y].png     # Current system patterns
 ```
 
-**Structure Decision**: Single React application with PWA capabilities, organized by feature and component hierarchy to support chunk-based learning content and child-friendly interactive experiences.
+### Source Code (repository root)
+<!--
+  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
+  for this feature. Delete unused options and expand the chosen structure with
+  real paths (e.g., apps/admin, packages/something). The delivered plan must
+  not include Option labels.
+-->
+
+```text
+# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
+src/
+├── models/
+├── services/
+├── cli/
+└── lib/
+
+tests/
+├── contract/
+├── integration/
+└── unit/
+
+# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
+backend/
+├── src/
+│   ├── models/
+│   ├── services/
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
+api/
+└── [same as backend above]
+
+ios/ or android/
+└── [platform-specific structure: feature modules, UI flows, platform tests]
+```
+
+**Structure Decision**: [Document the selected structure and reference the real
+directories captured above]
 
 ## Complexity Tracking
 

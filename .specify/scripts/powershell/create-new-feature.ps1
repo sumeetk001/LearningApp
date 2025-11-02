@@ -261,6 +261,17 @@ if ($hasGit) {
 $featureDir = Join-Path $specsDir $branchName
 New-Item -ItemType Directory -Path $featureDir -Force | Out-Null
 
+# Create media directory structure for visual assets
+$mediaDir = Join-Path $featureDir 'media'
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'mockups') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'diagrams') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'references') -Force | Out-Null
+
+# Create .gitkeep files to ensure directories are tracked in git
+New-Item -ItemType File -Path (Join-Path $mediaDir 'mockups/.gitkeep') -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $mediaDir 'diagrams/.gitkeep') -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $mediaDir 'references/.gitkeep') -Force | Out-Null
+
 $template = Join-Path $repoRoot '.specify/templates/spec-template.md'
 $specFile = Join-Path $featureDir 'spec.md'
 if (Test-Path $template) { 

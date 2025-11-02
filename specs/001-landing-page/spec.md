@@ -57,7 +57,7 @@ Users access the learning app from various devices (tablets, phones, computers) 
 
 ### Edge Cases
 
-- What happens when images fail to load or take too long to download?
+- Images that fail to load or take too long to download are served from local cache, with offline access to previously viewed content
 - How does the interface handle very long subject names or descriptions?
 - What occurs when a user tries to access a subject that's temporarily unavailable?
 - How does the app respond when accessed from very small or very large screen sizes?
@@ -67,15 +67,17 @@ Users access the learning app from various devices (tablets, phones, computers) 
 ### Functional Requirements
 
 - **FR-001**: System MUST display a main landing page that clearly identifies the app as a kids' learning platform
-- **FR-002**: Landing page MUST include visual navigation elements for accessing different educational subjects
-- **FR-003**: System MUST provide dedicated pages for each educational subject area referenced in the design materials
+- **FR-002**: Landing page MUST include visual navigation elements for accessing different educational subjects as depicted in reference images
+- **FR-003**: System MUST provide dedicated pages for each educational subject area shown in the reference design materials
 - **FR-004**: Subject pages MUST display subject-specific content and learning entry points
 - **FR-005**: All pages MUST maintain consistent navigation and branding elements
 - **FR-006**: System MUST support responsive design that adapts to different screen sizes and devices
-- **FR-007**: Landing page MUST load and display essential content within 3 seconds on standard internet connections
+- **FR-007**: Landing page MUST load and display essential content within 3 seconds on standard internet connections, with non-critical content lazy-loaded
 - **FR-008**: Subject navigation MUST be intuitive and accessible for the target age group
 - **FR-009**: System MUST provide clear visual hierarchy and age-appropriate design elements
 - **FR-010**: All interactive elements MUST be touch-friendly for tablet and mobile usage
+- **FR-011**: System MUST implement lazy-loading for non-critical images and content while ensuring essential navigation and branding load immediately
+- **FR-012**: System MUST cache images locally and provide offline access to previously viewed content to ensure educational continuity
 
 ### Key Entities
 
@@ -97,12 +99,23 @@ Users access the learning app from various devices (tablets, phones, computers) 
 - **SC-007**: Page layout remains functional and visually coherent across major browsers (Chrome, Safari, Firefox, Edge)
 - **SC-008**: Touch targets meet minimum 44px size requirement for mobile accessibility standards
 
+## Clarifications
+
+### Session 2025-11-02
+
+- Q: Animation and Interaction Library → A: React Spring
+- Q: Subject Areas and Content Scope → A: As shown in reference images
+- Q: Performance and Loading Strategy → A: Critical content first, others lazy-loaded
+- Q: Error Handling for Failed Image Loading → A: Cache images locally for offline access
+- Q: Target Age Group Specificity → A: 6-8
+
 ## Assumptions
 
-- **Target Audience**: Primary users are children (ages 5-12) with potential parent/guardian oversight
+- **Target Audience**: Primary users are children ages 6-8 with potential parent/guardian oversight, secondary appeal to ages 5-12
 - **Device Usage**: App will be primarily accessed via tablets and mobile devices, with secondary desktop usage
 - **Internet Connectivity**: Standard broadband connection speeds (minimum 5 Mbps) for optimal experience
 - **Browser Support**: Modern browsers with HTML5 and CSS3 support (released within last 3 years)
+- **Animation Library**: React Spring for physics-based animations and smooth transitions between subjects
 - **Content Structure**: Reference images represent the desired visual design and layout approach
 - **Accessibility**: App should meet WCAG 2.1 AA standards for educational applications
 - **Performance**: Landing page should prioritize quick initial load with progressive enhancement

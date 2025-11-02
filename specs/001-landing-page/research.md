@@ -8,18 +8,19 @@
 
 ### 1. Animation Library Choice
 
-**Decision**: Framer Motion  
+**Decision**: React Spring  
 **Rationale**: 
-- Optimized for React with excellent TypeScript support
-- Better performance than React Spring for complex animations
-- Built-in gesture support crucial for touch interfaces
-- Simpler API reduces complexity for child-focused interactions
-- Strong community support and documentation
+- Physics-based animations feel more natural and engaging for children
+- Excellent performance with 60fps smooth animations on mobile devices
+- Declarative API fits well with React patterns and reduces complexity
+- Supports interruption and gesture-based interactions for touch devices
+- Lower bundle size compared to Framer Motion (critical for <500KB target)
+- Better for educational apps where smooth, predictable motion aids learning
 
 **Alternatives considered**:
-- React Spring: More complex API, steeper learning curve
-- CSS animations: Limited gesture support, harder to coordinate
-- Lottie: Overkill for simple UI animations, larger bundle size
+- Framer Motion: More features but larger bundle size, less physics-focused
+- CSS animations: Limited interactivity and harder to coordinate complex sequences
+- Lottie: Overkill for simple UI animations, much larger bundle impact
 
 ### 2. Image Optimization Strategy
 

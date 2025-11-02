@@ -1,439 +1,301 @@
 #!/usr/bin/env pwsh
-<#!
-.SYNOPSIS
-Update agent context files with information from plan.md (PowerShell version)
-
-.DESCRIPTION
-Mirrors the behavior of scripts/bash/update-agent-context.sh:
- 1. Environment Validation
- 2. Plan Data Extraction
- 3. Agent File Management (create from template or update existing)
- 4. Content Generation (technology stack, recent changes, timestamp)
- 5. Multi-Agent Support (claude, gemini, copilot, cursor-agent, qwen, opencode, codex, windsurf, kilocode, auggie, roo, amp, q)
-
-.PARAMETER AgentType
-Optional agent key to update a single agent. If omitted, updates all existing agent files (creating a default Claude file if none exist).
-
-.EXAMPLE
-./update-agent-context.ps1 -AgentType claude
-
-.EXAMPLE
-./update-agent-context.ps1   # Updates all existing agent files
-
-.NOTES
-Relies on common helper functions in common.ps1
-#>
+# Create a new feature
+[CmdletBinding()]
 param(
-    [Parameter(Position=0)]
-    [ValidateSet('claude','gemini','copilot','cursor-agent','qwen','opencode','codex','windsurf','kilocode','auggie','roo','codebuddy','amp','q')]
-    [string]$AgentType
+    [switch]$Json,
+    [string]$ShortName,
+    [int]$Number = 0,
+    [switch]$Help,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$FeatureDescription
 )
-
 $ErrorActionPreference = 'Stop'
 
-# Import common helpers
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $ScriptDir 'common.ps1')
-
-# Acquire environment paths
-$envData = Get-FeaturePathsEnv
-$REPO_ROOT     = $envData.REPO_ROOT
-$CURRENT_BRANCH = $envData.CURRENT_BRANCH
-$HAS_GIT       = $envData.HAS_GIT
-$IMPL_PLAN     = $envData.IMPL_PLAN
-$NEW_PLAN = $IMPL_PLAN
-
-# Agent file paths
-$CLAUDE_FILE   = Join-Path $REPO_ROOT 'CLAUDE.md'
-$GEMINI_FILE   = Join-Path $REPO_ROOT 'GEMINI.md'
-$COPILOT_FILE  = Join-Path $REPO_ROOT '.github/copilot-instructions.md'
-$CURSOR_FILE   = Join-Path $REPO_ROOT '.cursor/rules/specify-rules.mdc'
-$QWEN_FILE     = Join-Path $REPO_ROOT 'QWEN.md'
-$AGENTS_FILE   = Join-Path $REPO_ROOT 'AGENTS.md'
-$WINDSURF_FILE = Join-Path $REPO_ROOT '.windsurf/rules/specify-rules.md'
-$KILOCODE_FILE = Join-Path $REPO_ROOT '.kilocode/rules/specify-rules.md'
-$AUGGIE_FILE   = Join-Path $REPO_ROOT '.augment/rules/specify-rules.md'
-$ROO_FILE      = Join-Path $REPO_ROOT '.roo/rules/specify-rules.md'
-$CODEBUDDY_FILE = Join-Path $REPO_ROOT 'CODEBUDDY.md'
-$AMP_FILE      = Join-Path $REPO_ROOT 'AGENTS.md'
-$Q_FILE        = Join-Path $REPO_ROOT 'AGENTS.md'
-
-$TEMPLATE_FILE = Join-Path $REPO_ROOT '.specify/templates/agent-file-template.md'
-
-# Parsed plan data placeholders
-$script:NEW_LANG = ''
-$script:NEW_FRAMEWORK = ''
-$script:NEW_DB = ''
-$script:NEW_PROJECT_TYPE = ''
-
-function Write-Info { 
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message
-    )
-    Write-Host "INFO: $Message" 
+# Show help if requested
+if ($Help) {
+    Write-Host "Usage: ./create-new-feature.ps1 [-Json] [-ShortName <name>] [-Number N] <feature description>"
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host "  -Json               Output in JSON format"
+    Write-Host "  -ShortName <name>   Provide a custom short name (2-4 words) for the branch"
+    Write-Host "  -Number N           Specify branch number manually (overrides auto-detection)"
+    Write-Host "  -Help               Show this help message"
+    Write-Host ""
+    Write-Host "Examples:"
+    Write-Host "  ./create-new-feature.ps1 'Add user authentication system' -ShortName 'user-auth'"
+    Write-Host "  ./create-new-feature.ps1 'Implement OAuth2 integration for API'"
+    exit 0
 }
 
-function Write-Success { 
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message
-    )
-    Write-Host "$([char]0x2713) $Message" 
+# Check if feature description provided
+if (-not $FeatureDescription -or $FeatureDescription.Count -eq 0) {
+    Write-Error "Usage: ./create-new-feature.ps1 [-Json] [-ShortName <name>] <feature description>"
+    exit 1
 }
 
-function Write-WarningMsg { 
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message
-    )
-    Write-Warning $Message 
-}
+$featureDesc = ($FeatureDescription -join ' ').Trim()
 
-function Write-Err { 
+# Resolve repository root. Prefer git information when available, but fall back
+# to searching for repository markers so the workflow still functions in repositories that
+# were initialized with --no-git.
+function Find-RepositoryRoot {
     param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message
+        [string]$StartDir,
+        [string[]]$Markers = @('.git', '.specify')
     )
-    Write-Host "ERROR: $Message" -ForegroundColor Red 
-}
-
-function Validate-Environment {
-    if (-not $CURRENT_BRANCH) {
-        Write-Err 'Unable to determine current feature'
-        if ($HAS_GIT) { Write-Info "Make sure you're on a feature branch" } else { Write-Info 'Set SPECIFY_FEATURE environment variable or create a feature first' }
-        exit 1
-    }
-    if (-not (Test-Path $NEW_PLAN)) {
-        Write-Err "No plan.md found at $NEW_PLAN"
-        Write-Info 'Ensure you are working on a feature with a corresponding spec directory'
-        if (-not $HAS_GIT) { Write-Info 'Use: $env:SPECIFY_FEATURE=your-feature-name or create a new feature first' }
-        exit 1
-    }
-    if (-not (Test-Path $TEMPLATE_FILE)) {
-        Write-Err "Template file not found at $TEMPLATE_FILE"
-        Write-Info 'Run specify init to scaffold .specify/templates, or add agent-file-template.md there.'
-        exit 1
-    }
-}
-
-function Extract-PlanField {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$FieldPattern,
-        [Parameter(Mandatory=$true)]
-        [string]$PlanFile
-    )
-    if (-not (Test-Path $PlanFile)) { return '' }
-    # Lines like **Language/Version**: Python 3.12
-    $regex = "^\*\*$([Regex]::Escape($FieldPattern))\*\*: (.+)$"
-    Get-Content -LiteralPath $PlanFile -Encoding utf8 | ForEach-Object {
-        if ($_ -match $regex) { 
-            $val = $Matches[1].Trim()
-            if ($val -notin @('NEEDS CLARIFICATION','N/A')) { return $val }
+    $current = Resolve-Path $StartDir
+    while ($true) {
+        foreach ($marker in $Markers) {
+            if (Test-Path (Join-Path $current $marker)) {
+                return $current
+            }
         }
-    } | Select-Object -First 1
-}
-
-function Parse-PlanData {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$PlanFile
-    )
-    if (-not (Test-Path $PlanFile)) { Write-Err "Plan file not found: $PlanFile"; return $false }
-    Write-Info "Parsing plan data from $PlanFile"
-    $script:NEW_LANG        = Extract-PlanField -FieldPattern 'Language/Version' -PlanFile $PlanFile
-    $script:NEW_FRAMEWORK   = Extract-PlanField -FieldPattern 'Primary Dependencies' -PlanFile $PlanFile
-    $script:NEW_DB          = Extract-PlanField -FieldPattern 'Storage' -PlanFile $PlanFile
-    $script:NEW_PROJECT_TYPE = Extract-PlanField -FieldPattern 'Project Type' -PlanFile $PlanFile
-
-    if ($NEW_LANG) { Write-Info "Found language: $NEW_LANG" } else { Write-WarningMsg 'No language information found in plan' }
-    if ($NEW_FRAMEWORK) { Write-Info "Found framework: $NEW_FRAMEWORK" }
-    if ($NEW_DB -and $NEW_DB -ne 'N/A') { Write-Info "Found database: $NEW_DB" }
-    if ($NEW_PROJECT_TYPE) { Write-Info "Found project type: $NEW_PROJECT_TYPE" }
-    return $true
-}
-
-function Format-TechnologyStack {
-    param(
-        [Parameter(Mandatory=$false)]
-        [string]$Lang,
-        [Parameter(Mandatory=$false)]
-        [string]$Framework
-    )
-    $parts = @()
-    if ($Lang -and $Lang -ne 'NEEDS CLARIFICATION') { $parts += $Lang }
-    if ($Framework -and $Framework -notin @('NEEDS CLARIFICATION','N/A')) { $parts += $Framework }
-    if (-not $parts) { return '' }
-    return ($parts -join ' + ')
-}
-
-function Get-ProjectStructure { 
-    param(
-        [Parameter(Mandatory=$false)]
-        [string]$ProjectType
-    )
-    if ($ProjectType -match 'web') { return "backend/`nfrontend/`ntests/" } else { return "src/`ntests/" } 
-}
-
-function Get-CommandsForLanguage { 
-    param(
-        [Parameter(Mandatory=$false)]
-        [string]$Lang
-    )
-    switch -Regex ($Lang) {
-        'Python' { return "cd src; pytest; ruff check ." }
-        'Rust' { return "cargo test; cargo clippy" }
-        'JavaScript|TypeScript' { return "npm test; npm run lint" }
-        default { return "# Add commands for $Lang" }
+        $parent = Split-Path $current -Parent
+        if ($parent -eq $current) {
+            # Reached filesystem root without finding markers
+            return $null
+        }
+        $current = $parent
     }
 }
 
-function Get-LanguageConventions { 
+function Get-NextBranchNumber {
     param(
-        [Parameter(Mandatory=$false)]
-        [string]$Lang
+        [string]$ShortName,
+        [string]$SpecsDir
     )
-    if ($Lang) { "${Lang}: Follow standard conventions" } else { 'General: Follow standard conventions' } 
-}
-
-function New-AgentFile {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$TargetFile,
-        [Parameter(Mandatory=$true)]
-        [string]$ProjectName,
-        [Parameter(Mandatory=$true)]
-        [datetime]$Date
-    )
-    if (-not (Test-Path $TEMPLATE_FILE)) { Write-Err "Template not found at $TEMPLATE_FILE"; return $false }
-    $temp = New-TemporaryFile
-    Copy-Item -LiteralPath $TEMPLATE_FILE -Destination $temp -Force
-
-    $projectStructure = Get-ProjectStructure -ProjectType $NEW_PROJECT_TYPE
-    $commands = Get-CommandsForLanguage -Lang $NEW_LANG
-    $languageConventions = Get-LanguageConventions -Lang $NEW_LANG
-
-    $escaped_lang = $NEW_LANG
-    $escaped_framework = $NEW_FRAMEWORK
-    $escaped_branch = $CURRENT_BRANCH
-
-    $content = Get-Content -LiteralPath $temp -Raw -Encoding utf8
-    $content = $content -replace '\[PROJECT NAME\]',$ProjectName
-    $content = $content -replace '\[DATE\]',$Date.ToString('yyyy-MM-dd')
     
-    # Build the technology stack string safely
-    $techStackForTemplate = ""
-    if ($escaped_lang -and $escaped_framework) {
-        $techStackForTemplate = "- $escaped_lang + $escaped_framework ($escaped_branch)"
-    } elseif ($escaped_lang) {
-        $techStackForTemplate = "- $escaped_lang ($escaped_branch)"
-    } elseif ($escaped_framework) {
-        $techStackForTemplate = "- $escaped_framework ($escaped_branch)"
+    # Fetch all remotes to get latest branch info (suppress errors if no remotes)
+    try {
+        git fetch --all --prune 2>$null | Out-Null
+    } catch {
+        # Ignore fetch errors
     }
     
-    $content = $content -replace '\[EXTRACTED FROM ALL PLAN.MD FILES\]',$techStackForTemplate
-    # For project structure we manually embed (keep newlines)
-    $escapedStructure = [Regex]::Escape($projectStructure)
-    $content = $content -replace '\[ACTUAL STRUCTURE FROM PLANS\]',$escapedStructure
-    # Replace escaped newlines placeholder after all replacements
-    $content = $content -replace '\[ONLY COMMANDS FOR ACTIVE TECHNOLOGIES\]',$commands
-    $content = $content -replace '\[LANGUAGE-SPECIFIC, ONLY FOR LANGUAGES IN USE\]',$languageConventions
-    
-    # Build the recent changes string safely
-    $recentChangesForTemplate = ""
-    if ($escaped_lang -and $escaped_framework) {
-        $recentChangesForTemplate = "- ${escaped_branch}: Added ${escaped_lang} + ${escaped_framework}"
-    } elseif ($escaped_lang) {
-        $recentChangesForTemplate = "- ${escaped_branch}: Added ${escaped_lang}"
-    } elseif ($escaped_framework) {
-        $recentChangesForTemplate = "- ${escaped_branch}: Added ${escaped_framework}"
+    # Find remote branches matching the pattern using git ls-remote
+    $remoteBranches = @()
+    try {
+        $remoteRefs = git ls-remote --heads origin 2>$null
+        if ($remoteRefs) {
+            $remoteBranches = $remoteRefs | Where-Object { $_ -match "refs/heads/(\d+)-$([regex]::Escape($ShortName))$" } | ForEach-Object {
+                if ($_ -match "refs/heads/(\d+)-") {
+                    [int]$matches[1]
+                }
+            }
+        }
+    } catch {
+        # Ignore errors
     }
     
-    $content = $content -replace '\[LAST 3 FEATURES AND WHAT THEY ADDED\]',$recentChangesForTemplate
-    # Convert literal \n sequences introduced by Escape to real newlines
-    $content = $content -replace '\\n',[Environment]::NewLine
-
-    $parent = Split-Path -Parent $TargetFile
-    if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }
-    Set-Content -LiteralPath $TargetFile -Value $content -NoNewline -Encoding utf8
-    Remove-Item $temp -Force
-    return $true
-}
-
-function Update-ExistingAgentFile {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$TargetFile,
-        [Parameter(Mandatory=$true)]
-        [datetime]$Date
-    )
-    if (-not (Test-Path $TargetFile)) { return (New-AgentFile -TargetFile $TargetFile -ProjectName (Split-Path $REPO_ROOT -Leaf) -Date $Date) }
-
-    $techStack = Format-TechnologyStack -Lang $NEW_LANG -Framework $NEW_FRAMEWORK
-    $newTechEntries = @()
-    if ($techStack) {
-        $escapedTechStack = [Regex]::Escape($techStack)
-        if (-not (Select-String -Pattern $escapedTechStack -Path $TargetFile -Quiet)) { 
-            $newTechEntries += "- $techStack ($CURRENT_BRANCH)" 
+    # Check local branches
+    $localBranches = @()
+    try {
+        $allBranches = git branch 2>$null
+        if ($allBranches) {
+            $localBranches = $allBranches | Where-Object { $_ -match "^\*?\s*(\d+)-$([regex]::Escape($ShortName))$" } | ForEach-Object {
+                if ($_ -match "(\d+)-") {
+                    [int]$matches[1]
+                }
+            }
         }
+    } catch {
+        # Ignore errors
     }
-    if ($NEW_DB -and $NEW_DB -notin @('N/A','NEEDS CLARIFICATION')) {
-        $escapedDB = [Regex]::Escape($NEW_DB)
-        if (-not (Select-String -Pattern $escapedDB -Path $TargetFile -Quiet)) { 
-            $newTechEntries += "- $NEW_DB ($CURRENT_BRANCH)" 
-        }
-    }
-    $newChangeEntry = ''
-    if ($techStack) { $newChangeEntry = "- ${CURRENT_BRANCH}: Added ${techStack}" }
-    elseif ($NEW_DB -and $NEW_DB -notin @('N/A','NEEDS CLARIFICATION')) { $newChangeEntry = "- ${CURRENT_BRANCH}: Added ${NEW_DB}" }
-
-    $lines = Get-Content -LiteralPath $TargetFile -Encoding utf8
-    $output = New-Object System.Collections.Generic.List[string]
-    $inTech = $false; $inChanges = $false; $techAdded = $false; $changeAdded = $false; $existingChanges = 0
-
-    for ($i=0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        if ($line -eq '## Active Technologies') {
-            $output.Add($line)
-            $inTech = $true
-            continue
-        }
-        if ($inTech -and $line -match '^##\s') {
-            if (-not $techAdded -and $newTechEntries.Count -gt 0) { $newTechEntries | ForEach-Object { $output.Add($_) }; $techAdded = $true }
-            $output.Add($line); $inTech = $false; continue
-        }
-        if ($inTech -and [string]::IsNullOrWhiteSpace($line)) {
-            if (-not $techAdded -and $newTechEntries.Count -gt 0) { $newTechEntries | ForEach-Object { $output.Add($_) }; $techAdded = $true }
-            $output.Add($line); continue
-        }
-        if ($line -eq '## Recent Changes') {
-            $output.Add($line)
-            if ($newChangeEntry) { $output.Add($newChangeEntry); $changeAdded = $true }
-            $inChanges = $true
-            continue
-        }
-        if ($inChanges -and $line -match '^##\s') { $output.Add($line); $inChanges = $false; continue }
-        if ($inChanges -and $line -match '^- ') {
-            if ($existingChanges -lt 2) { $output.Add($line); $existingChanges++ }
-            continue
-        }
-        if ($line -match '\*\*Last updated\*\*: .*\d{4}-\d{2}-\d{2}') {
-            $output.Add(($line -replace '\d{4}-\d{2}-\d{2}',$Date.ToString('yyyy-MM-dd')))
-            continue
-        }
-        $output.Add($line)
-    }
-
-    # Post-loop check: if we're still in the Active Technologies section and haven't added new entries
-    if ($inTech -and -not $techAdded -and $newTechEntries.Count -gt 0) {
-        $newTechEntries | ForEach-Object { $output.Add($_) }
-    }
-
-    Set-Content -LiteralPath $TargetFile -Value ($output -join [Environment]::NewLine) -Encoding utf8
-    return $true
-}
-
-function Update-AgentFile {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$TargetFile,
-        [Parameter(Mandatory=$true)]
-        [string]$AgentName
-    )
-    if (-not $TargetFile -or -not $AgentName) { Write-Err 'Update-AgentFile requires TargetFile and AgentName'; return $false }
-    Write-Info "Updating $AgentName context file: $TargetFile"
-    $projectName = Split-Path $REPO_ROOT -Leaf
-    $date = Get-Date
-
-    $dir = Split-Path -Parent $TargetFile
-    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-
-    if (-not (Test-Path $TargetFile)) {
-        if (New-AgentFile -TargetFile $TargetFile -ProjectName $projectName -Date $date) { Write-Success "Created new $AgentName context file" } else { Write-Err 'Failed to create new agent file'; return $false }
-    } else {
+    
+    # Check specs directory
+    $specDirs = @()
+    if (Test-Path $SpecsDir) {
         try {
-            if (Update-ExistingAgentFile -TargetFile $TargetFile -Date $date) { Write-Success "Updated existing $AgentName context file" } else { Write-Err 'Failed to update agent file'; return $false }
+            $specDirs = Get-ChildItem -Path $SpecsDir -Directory | Where-Object { $_.Name -match "^(\d+)-$([regex]::Escape($ShortName))$" } | ForEach-Object {
+                if ($_.Name -match "^(\d+)-") {
+                    [int]$matches[1]
+                }
+            }
         } catch {
-            Write-Err "Cannot access or update existing file: $TargetFile. $_"
-            return $false
+            # Ignore errors
         }
     }
-    return $true
+    
+    # Combine all sources and get the highest number
+    $maxNum = 0
+    foreach ($num in ($remoteBranches + $localBranches + $specDirs)) {
+        if ($num -gt $maxNum) {
+            $maxNum = $num
+        }
+    }
+    
+    # Return next number
+    return $maxNum + 1
+}
+$fallbackRoot = (Find-RepositoryRoot -StartDir $PSScriptRoot)
+if (-not $fallbackRoot) {
+    Write-Error "Error: Could not determine repository root. Please run this script from within the repository."
+    exit 1
 }
 
-function Update-SpecificAgent {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Type
+try {
+    $repoRoot = git rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $hasGit = $true
+    } else {
+        throw "Git not available"
+    }
+} catch {
+    $repoRoot = $fallbackRoot
+    $hasGit = $false
+}
+
+Set-Location $repoRoot
+
+$specsDir = Join-Path $repoRoot 'specs'
+New-Item -ItemType Directory -Path $specsDir -Force | Out-Null
+
+# Function to generate branch name with stop word filtering and length filtering
+function Get-BranchName {
+    param([string]$Description)
+    
+    # Common stop words to filter out
+    $stopWords = @(
+        'i', 'a', 'an', 'the', 'to', 'for', 'of', 'in', 'on', 'at', 'by', 'with', 'from',
+        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+        'do', 'does', 'did', 'will', 'would', 'should', 'could', 'can', 'may', 'might', 'must', 'shall',
+        'this', 'that', 'these', 'those', 'my', 'your', 'our', 'their',
+        'want', 'need', 'add', 'get', 'set'
     )
-    switch ($Type) {
-        'claude'   { Update-AgentFile -TargetFile $CLAUDE_FILE   -AgentName 'Claude Code' }
-        'gemini'   { Update-AgentFile -TargetFile $GEMINI_FILE   -AgentName 'Gemini CLI' }
-        'copilot'  { Update-AgentFile -TargetFile $COPILOT_FILE  -AgentName 'GitHub Copilot' }
-        'cursor-agent' { Update-AgentFile -TargetFile $CURSOR_FILE   -AgentName 'Cursor IDE' }
-        'qwen'     { Update-AgentFile -TargetFile $QWEN_FILE     -AgentName 'Qwen Code' }
-        'opencode' { Update-AgentFile -TargetFile $AGENTS_FILE   -AgentName 'opencode' }
-        'codex'    { Update-AgentFile -TargetFile $AGENTS_FILE   -AgentName 'Codex CLI' }
-        'windsurf' { Update-AgentFile -TargetFile $WINDSURF_FILE -AgentName 'Windsurf' }
-        'kilocode' { Update-AgentFile -TargetFile $KILOCODE_FILE -AgentName 'Kilo Code' }
-        'auggie'   { Update-AgentFile -TargetFile $AUGGIE_FILE   -AgentName 'Auggie CLI' }
-        'roo'      { Update-AgentFile -TargetFile $ROO_FILE      -AgentName 'Roo Code' }
-        'codebuddy' { Update-AgentFile -TargetFile $CODEBUDDY_FILE -AgentName 'CodeBuddy CLI' }
-        'amp'      { Update-AgentFile -TargetFile $AMP_FILE      -AgentName 'Amp' }
-        'q'        { Update-AgentFile -TargetFile $Q_FILE        -AgentName 'Amazon Q Developer CLI' }
-        default { Write-Err "Unknown agent type '$Type'"; Write-Err 'Expected: claude|gemini|copilot|cursor-agent|qwen|opencode|codex|windsurf|kilocode|auggie|roo|codebuddy|amp|q'; return $false }
+    
+    # Convert to lowercase and extract words (alphanumeric only)
+    $cleanName = $Description.ToLower() -replace '[^a-z0-9\s]', ' '
+    $words = $cleanName -split '\s+' | Where-Object { $_ }
+    
+    # Filter words: remove stop words and words shorter than 3 chars (unless they're uppercase acronyms in original)
+    $meaningfulWords = @()
+    foreach ($word in $words) {
+        # Skip stop words
+        if ($stopWords -contains $word) { continue }
+        
+        # Keep words that are length >= 3 OR appear as uppercase in original (likely acronyms)
+        if ($word.Length -ge 3) {
+            $meaningfulWords += $word
+        } elseif ($Description -match "\b$($word.ToUpper())\b") {
+            # Keep short words if they appear as uppercase in original (likely acronyms)
+            $meaningfulWords += $word
+        }
+    }
+    
+    # If we have meaningful words, use first 3-4 of them
+    if ($meaningfulWords.Count -gt 0) {
+        $maxWords = if ($meaningfulWords.Count -eq 4) { 4 } else { 3 }
+        $result = ($meaningfulWords | Select-Object -First $maxWords) -join '-'
+        return $result
+    } else {
+        # Fallback to original logic if no meaningful words found
+        $result = $Description.ToLower() -replace '[^a-z0-9]', '-' -replace '-{2,}', '-' -replace '^-', '' -replace '-$', ''
+        $fallbackWords = ($result -split '-') | Where-Object { $_ } | Select-Object -First 3
+        return [string]::Join('-', $fallbackWords)
     }
 }
 
-function Update-AllExistingAgents {
-    $found = $false
-    $ok = $true
-    if (Test-Path $CLAUDE_FILE)   { if (-not (Update-AgentFile -TargetFile $CLAUDE_FILE   -AgentName 'Claude Code')) { $ok = $false }; $found = $true }
-    if (Test-Path $GEMINI_FILE)   { if (-not (Update-AgentFile -TargetFile $GEMINI_FILE   -AgentName 'Gemini CLI')) { $ok = $false }; $found = $true }
-    if (Test-Path $COPILOT_FILE)  { if (-not (Update-AgentFile -TargetFile $COPILOT_FILE  -AgentName 'GitHub Copilot')) { $ok = $false }; $found = $true }
-    if (Test-Path $CURSOR_FILE)   { if (-not (Update-AgentFile -TargetFile $CURSOR_FILE   -AgentName 'Cursor IDE')) { $ok = $false }; $found = $true }
-    if (Test-Path $QWEN_FILE)     { if (-not (Update-AgentFile -TargetFile $QWEN_FILE     -AgentName 'Qwen Code')) { $ok = $false }; $found = $true }
-    if (Test-Path $AGENTS_FILE)   { if (-not (Update-AgentFile -TargetFile $AGENTS_FILE   -AgentName 'Codex/opencode')) { $ok = $false }; $found = $true }
-    if (Test-Path $WINDSURF_FILE) { if (-not (Update-AgentFile -TargetFile $WINDSURF_FILE -AgentName 'Windsurf')) { $ok = $false }; $found = $true }
-    if (Test-Path $KILOCODE_FILE) { if (-not (Update-AgentFile -TargetFile $KILOCODE_FILE -AgentName 'Kilo Code')) { $ok = $false }; $found = $true }
-    if (Test-Path $AUGGIE_FILE)   { if (-not (Update-AgentFile -TargetFile $AUGGIE_FILE   -AgentName 'Auggie CLI')) { $ok = $false }; $found = $true }
-    if (Test-Path $ROO_FILE)      { if (-not (Update-AgentFile -TargetFile $ROO_FILE      -AgentName 'Roo Code')) { $ok = $false }; $found = $true }
-    if (Test-Path $CODEBUDDY_FILE) { if (-not (Update-AgentFile -TargetFile $CODEBUDDY_FILE -AgentName 'CodeBuddy CLI')) { $ok = $false }; $found = $true }
-    if (Test-Path $Q_FILE)        { if (-not (Update-AgentFile -TargetFile $Q_FILE        -AgentName 'Amazon Q Developer CLI')) { $ok = $false }; $found = $true }
-    if (-not $found) {
-        Write-Info 'No existing agent files found, creating default Claude file...'
-        if (-not (Update-AgentFile -TargetFile $CLAUDE_FILE -AgentName 'Claude Code')) { $ok = $false }
-    }
-    return $ok
+# Generate branch name
+if ($ShortName) {
+    # Use provided short name, just clean it up
+    $branchSuffix = $ShortName.ToLower() -replace '[^a-z0-9]', '-' -replace '-{2,}', '-' -replace '^-', '' -replace '-$', ''
+} else {
+    # Generate from description with smart filtering
+    $branchSuffix = Get-BranchName -Description $featureDesc
 }
 
-function Print-Summary {
-    Write-Host ''
-    Write-Info 'Summary of changes:'
-    if ($NEW_LANG) { Write-Host "  - Added language: $NEW_LANG" }
-    if ($NEW_FRAMEWORK) { Write-Host "  - Added framework: $NEW_FRAMEWORK" }
-    if ($NEW_DB -and $NEW_DB -ne 'N/A') { Write-Host "  - Added database: $NEW_DB" }
-    Write-Host ''
-    Write-Info 'Usage: ./update-agent-context.ps1 [-AgentType claude|gemini|copilot|cursor-agent|qwen|opencode|codex|windsurf|kilocode|auggie|roo|codebuddy|amp|q]'
+# Determine branch number
+if ($Number -eq 0) {
+    if ($hasGit) {
+        # Check existing branches on remotes
+        $Number = Get-NextBranchNumber -ShortName $branchSuffix -SpecsDir $specsDir
+    } else {
+        # Fall back to local directory check
+        $highest = 0
+        if (Test-Path $specsDir) {
+            Get-ChildItem -Path $specsDir -Directory | ForEach-Object {
+                if ($_.Name -match '^(\d{3})') {
+                    $num = [int]$matches[1]
+                    if ($num -gt $highest) { $highest = $num }
+                }
+            }
+        }
+        $Number = $highest + 1
+    }
 }
 
-function Main {
-    Validate-Environment
-    Write-Info "=== Updating agent context files for feature $CURRENT_BRANCH ==="
-    if (-not (Parse-PlanData -PlanFile $NEW_PLAN)) { Write-Err 'Failed to parse plan data'; exit 1 }
-    $success = $true
-    if ($AgentType) {
-        Write-Info "Updating specific agent: $AgentType"
-        if (-not (Update-SpecificAgent -Type $AgentType)) { $success = $false }
-    }
-    else {
-        Write-Info 'No agent specified, updating all existing agent files...'
-        if (-not (Update-AllExistingAgents)) { $success = $false }
-    }
-    Print-Summary
-    if ($success) { Write-Success 'Agent context update completed successfully'; exit 0 } else { Write-Err 'Agent context update completed with errors'; exit 1 }
+$featureNum = ('{0:000}' -f $Number)
+$branchName = "$featureNum-$branchSuffix"
+
+# GitHub enforces a 244-byte limit on branch names
+# Validate and truncate if necessary
+$maxBranchLength = 244
+if ($branchName.Length -gt $maxBranchLength) {
+    # Calculate how much we need to trim from suffix
+    # Account for: feature number (3) + hyphen (1) = 4 chars
+    $maxSuffixLength = $maxBranchLength - 4
+    
+    # Truncate suffix
+    $truncatedSuffix = $branchSuffix.Substring(0, [Math]::Min($branchSuffix.Length, $maxSuffixLength))
+    # Remove trailing hyphen if truncation created one
+    $truncatedSuffix = $truncatedSuffix -replace '-$', ''
+    
+    $originalBranchName = $branchName
+    $branchName = "$featureNum-$truncatedSuffix"
+    
+    Write-Warning "[specify] Branch name exceeded GitHub's 244-byte limit"
+    Write-Warning "[specify] Original: $originalBranchName ($($originalBranchName.Length) bytes)"
+    Write-Warning "[specify] Truncated to: $branchName ($($branchName.Length) bytes)"
 }
 
-Main
+if ($hasGit) {
+    try {
+        git checkout -b $branchName | Out-Null
+    } catch {
+        Write-Warning "Failed to create git branch: $branchName"
+    }
+} else {
+    Write-Warning "[specify] Warning: Git repository not detected; skipped branch creation for $branchName"
+}
+
+$featureDir = Join-Path $specsDir $branchName
+New-Item -ItemType Directory -Path $featureDir -Force | Out-Null
+
+# Create media directory structure for visual assets
+$mediaDir = Join-Path $featureDir 'media'
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'mockups') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'diagrams') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $mediaDir 'references') -Force | Out-Null
+
+# Create .gitkeep files to ensure directories are tracked in git
+New-Item -ItemType File -Path (Join-Path $mediaDir 'mockups/.gitkeep') -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $mediaDir 'diagrams/.gitkeep') -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $mediaDir 'references/.gitkeep') -Force | Out-Null
+
+$template = Join-Path $repoRoot '.specify/templates/spec-template.md'
+$specFile = Join-Path $featureDir 'spec.md'
+if (Test-Path $template) { 
+    Copy-Item $template $specFile -Force 
+} else { 
+    New-Item -ItemType File -Path $specFile | Out-Null 
+}
+
+# Set the SPECIFY_FEATURE environment variable for the current session
+$env:SPECIFY_FEATURE = $branchName
+
+if ($Json) {
+    $obj = [PSCustomObject]@{ 
+        BRANCH_NAME = $branchName
+        SPEC_FILE = $specFile
+        FEATURE_NUM = $featureNum
+        HAS_GIT = $hasGit
+    }
+    $obj | ConvertTo-Json -Compress
+} else {
+    Write-Output "BRANCH_NAME: $branchName"
+    Write-Output "SPEC_FILE: $specFile"
+    Write-Output "FEATURE_NUM: $featureNum"
+    Write-Output "HAS_GIT: $hasGit"
+    Write-Output "SPECIFY_FEATURE environment variable set to: $branchName"
+}
 
