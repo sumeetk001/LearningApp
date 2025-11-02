@@ -1,0 +1,439 @@
+openapi: 3.0.3
+info:
+  title: Kids Learning App - Landing Page API
+  version: 1.0.0
+  description: Static content delivery for landing page and subject navigation
+  contact:
+    name: Kids Learning App Team
+    email: dev@kidslearning.app
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.kidslearning.app/v1
+    description: Production API
+  - url: https://staging-api.kidslearning.app/v1
+    description: Staging API
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /landing:
+    get:
+      summary: Get landing page configuration
+      description: Returns static configuration for main landing page
+      tags: [Content]
+      responses:
+        '200':
+          description: Landing page data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LandingPage'
+        '304':
+          description: Not modified (cached content still valid)
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+          description: ETag for caching
+
+  /subjects:
+    get:
+      summary: Get available subjects
+      description: Returns list of all educational subjects
+      tags: [Content]
+      responses:
+        '200':
+          description: List of subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subjects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subject'
+                  total:
+                    type: integer
+                  lastModified:
+                    type: string
+                    format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /subjects/{subjectId}:
+    get:
+      summary: Get subject details
+      description: Returns detailed information for a specific subject
+      tags: [Content]
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]*$'
+            example: 'math'
+      responses:
+        '200':
+          description: Subject details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectPage'
+        '404':
+          description: Subject not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /media/{assetId}:
+    get:
+      summary: Get optimized media asset
+      description: Returns optimized image or media file
+      tags: [Media]
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: width
+          in: query
+          schema:
+            type: integer
+            enum: [320, 640, 1024, 1920]
+          description: Requested image width
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [webp, jpeg, png]
+          description: Preferred image format
+      responses:
+        '200':
+          description: Media file
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: 'public, max-age=31536000'
+            ETag:
+              schema:
+                type: string
+        '404':
+          description: Media asset not found
+
+  /health:
+    get:
+      summary: Service health check
+      description: Returns service status for monitoring
+      tags: [System]
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Public API key for content access (no user data)
+
+  schemas:
+    LandingPage:
+      type: object
+      required: [id, title, subtitle, heroImage, subjectNavigation]
+      properties:
+        id:
+          type: string
+          example: 'main-landing'
+        title:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: 'Kids Learning Adventure'
+        subtitle:
+          type: string
+          minLength: 10
+          maxLength: 200
+          example: 'Fun and interactive learning for kids aged 5-12'
+        heroImage:
+          $ref: '#/components/schemas/MediaAsset'
+        subjectNavigation:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectCard'
+          minItems: 3
+          maxItems: 12
+        metadata:
+          $ref: '#/components/schemas/PageMetadata'
+
+    Subject:
+      type: object
+      required: [id, name, description, icon, coverImage, color, status]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z][a-z0-9-]*$'
+          example: 'math'
+        name:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: 'Math Adventure'
+        description:
+          type: string
+          minLength: 20
+          maxLength: 150
+          example: 'Numbers, counting, and problem-solving fun!'
+        icon:
+          $ref: '#/components/schemas/MediaAsset'
+        coverImage:
+          $ref: '#/components/schemas/MediaAsset'
+        color:
+          $ref: '#/components/schemas/SubjectColor'
+        difficulty:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        status:
+          type: string
+          enum: [available, coming-soon, maintenance]
+
+    SubjectPage:
+      type: object
+      required: [id, subject, title, headerImage, introText]
+      properties:
+        id:
+          type: string
+        subject:
+          $ref: '#/components/schemas/Subject'
+        title:
+          type: string
+        headerImage:
+          $ref: '#/components/schemas/MediaAsset'
+        introText:
+          type: string
+          minLength: 50
+          maxLength: 300
+        learningOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/LearningOption'
+        metadata:
+          $ref: '#/components/schemas/PageMetadata'
+
+    SubjectCard:
+      type: object
+      required: [subject, displayOrder, animationDelay]
+      properties:
+        subject:
+          $ref: '#/components/schemas/Subject'
+        displayOrder:
+          type: integer
+          minimum: 1
+        isPromoted:
+          type: boolean
+          default: false
+        customDescription:
+          type: string
+          maxLength: 100
+        animationDelay:
+          type: number
+          minimum: 0
+          maximum: 2000
+
+    MediaAsset:
+      type: object
+      required: [id, altText, dimensions, optimizedUrls]
+      properties:
+        id:
+          type: string
+          example: 'hero-landing-001'
+        altText:
+          type: string
+          minLength: 10
+          maxLength: 200
+          example: 'Happy children learning with colorful educational materials'
+        dimensions:
+          $ref: '#/components/schemas/ImageDimensions'
+        optimizedUrls:
+          $ref: '#/components/schemas/ResponsiveImageSet'
+        loadingStrategy:
+          type: string
+          enum: [eager, lazy, critical]
+          default: lazy
+
+    ResponsiveImageSet:
+      type: object
+      properties:
+        webp:
+          type: object
+          properties:
+            320w:
+              type: string
+              format: uri
+            640w:
+              type: string
+              format: uri
+            1024w:
+              type: string
+              format: uri
+            1920w:
+              type: string
+              format: uri
+        jpeg:
+          type: object
+          properties:
+            320w:
+              type: string
+              format: uri
+            640w:
+              type: string
+              format: uri
+            1024w:
+              type: string
+              format: uri
+            1920w:
+              type: string
+              format: uri
+
+    ImageDimensions:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        aspectRatio:
+          type: string
+          example: '16:9'
+
+    SubjectColor:
+      type: object
+      required: [primary, secondary]
+      properties:
+        primary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: '#FF6B35'
+        secondary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: '#FFA85C'
+        contrastRatio:
+          type: number
+          minimum: 4.5
+          description: WCAG contrast ratio against white background
+
+    LearningOption:
+      type: object
+      required: [id, title, description, difficulty]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 150
+        difficulty:
+          type: string
+          enum: [beginner, intermediate, advanced]
+        icon:
+          type: string
+        estimatedDuration:
+          type: integer
+          description: Duration in minutes
+
+    PageMetadata:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          maxLength: 60
+        description:
+          type: string
+          maxLength: 160
+        keywords:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+        ogImage:
+          type: string
+          format: uri
+        lastModified:
+          type: string
+          format: date-time
+        loadPriority:
+          type: string
+          enum: [high, medium, low]
+          default: medium
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: 'SUBJECT_NOT_FOUND'
+            message:
+              type: string
+              example: 'The requested subject could not be found'
+            timestamp:
+              type: string
+              format: date-time
+            requestId:
+              type: string
+              format: uuid
+
+tags:
+  - name: Content
+    description: Static content delivery endpoints
+  - name: Media
+    description: Optimized media asset delivery
+  - name: System
+    description: System health and monitoring
